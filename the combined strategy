@@ -1,0 +1,622 @@
+//This source code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+//@version=4
+//New Strat-
+//Conditional Trailing Stops
+strategy(title="10 EMA with Sorcery Stops", shorttitle = "10 EMA with SS", overlay = true, calc_on_every_tick=true, default_qty_value = 100, initial_capital = 100000, default_qty_type = strategy.fixed, pyramiding = 0, process_orders_on_close=true)
+//creates a time filter to prevent "too many orders error" and allows user to see Strategy results per year by changing input in settings in Stratey Tester
+
+startDay = input(1, title="Start Day", minval=1, maxval=31, step=1)
+startMonth = input(1, title="Start Month", minval=1, maxval=12, step=1)
+startYear = input(2009, title="Start Year", minval=1980, step=1)
+endDay = input(31, title="End Day", minval=1, maxval=31, step=1)
+endMonth = input(12, title="End Month", minval=1, maxval=12, step=1)
+endYear = input(2050, title="End Year", minval=1980, step=1)
+timeFilter = (year >= startYear) and (month >= startMonth) and (dayofmonth >= startDay) and (year <= endYear) and (month <= endMonth) and (dayofmonth <= endDay)
+
+//added v1.1
+//Margin Size Input
+marginSize = input(title="Margin Size", defval=4, minval=1, step=1)
+
+//R Size (Risk Amount)
+rStaticOrPercent = input(title="R Static or Percent", defval="Static", options=["Static", "Percent"])
+rSizeStatic = input(1000, title="R Size Static", minval=1, step=100)
+rSizePercent = input(2, title="R Size Percent", minval=.01, step=.01)
+rSize = rStaticOrPercent == "Static" ? rSizeStatic : rStaticOrPercent == "Percent" ? (rSizePercent * .01 * strategy.equity) : 1
+//Turn On / Off different stops
+enableLongStops = input(title="Enable Long Stops", defval="Yes", options=["Yes", "No"])
+longStopsYes = enableLongStops == "Yes"
+
+//*** Change defval to "Yes" to test shorts ***
+enableShortStops = input(title="Enable Short Stops", defval="No", options=["Yes", "No"])
+shortStopsYes = enableShortStops == "Yes"
+enableNormalStops = input(title="Enable Normal Stops", defval="Yes", options=["Yes", "No"])
+normalStopsYes = enableNormalStops == "Yes"
+enableAggStops = input(title="Enable Aggressive Stops", defval="Yes", options=["Yes", "No"])
+aggStopsYes = enableAggStops == "Yes"
+//MAs Inputs Defalt is 10 EMA, 20 EMA, 50 EMA, 100 SMA and 200 SMA
+ma1Length = input(10, title="MA1 Period", minval=1, step=1)
+ma1Type = input(title="MA1 Type", defval="EMA", options=["SMA", "EMA", "WMA"])
+//ma2Length = input(20, title="MA2 Period", minval=1, step=1)
+//ma2Type = input(title="MA2 Type", defval="EMA", options=["SMA", "EMA", "WMA"])
+//ma3Length = input(34, title="MA3 Period", minval=1, step=1)
+//ma3Type = input(title="MA3 Type", defval="EMA", options=["SMA", "EMA", "WMA"])
+//ma4Length = input(100, title="MA4 Period", minval=1, step=1)
+//ma4Type = input(title="MA4 Type", defval="SMA", options=["SMA", "EMA", "WMA"])
+//ma5Length = input(200, title="MA5 Period", minval=1, step=1)
+//ma5Type = input(title="MA5 Type", defval="SMA", options=["SMA", "EMA", "WMA"])
+//MAs defined
+ma1 = ma1Type == "EMA" ? ema(close, ma1Length) : ma1Type == "SMA" ? sma(close, ma1Length) : wma(close, ma1Length)
+//ma2 = ma2Type == "EMA" ? ema(close, ma2Length) : ma2Type == "SMA" ? sma(close, ma2Length) : wma(close, ma2Length)
+//ma3 = ma3Type == "EMA" ? ema(close, ma3Length) : ma3Type == "SMA" ? sma(close, ma3Length) : wma(close, ma3Length)
+//ma4 = ma4Type == "SMA" ? sma(close, ma4Length) : ma4Type == "EMA" ? ema(close, ma4Length) : wma(close, ma4Length)
+//ma5 = ma5Type == "SMA" ? sma(close, ma5Length) : ma5Type == "EMA" ? ema(close, ma5Length) : wma(close, ma5Length)
+//Plot MAs
+plot(ma1, title="MA1", color=color.blue, linewidth=1, style=plot.style_line)
+//plot(ma2, title="MA2", color=color.purple, linewidth=1, style=plot.style_line)
+//plot(ma3, title="MA3", color=#00FFFF, linewidth=1, style=plot.style_line)
+//plot(ma4, title="MA4", color=color.blue, linewidth=2, style=plot.style_line)
+//plot(ma5, title="MA5", color=color.orange, linewidth=2, style=plot.style_line)
+
+//Edited v1.2
+//Entry Signals
+//Long Signal
+entrySignalLong = strategy.position_size == 0 and close[1] > ma1 and close > ma1 and close < open
+secondSignalLong = strategy.position_size > 0 and close[1] > ma1 and close > ma1 and close < open
+plotshape(entrySignalLong, style=shape.triangleup, location=location.belowbar, color=color.green, size=size.small)
+plotshape(secondSignalLong, style=shape.triangleup, location=location.belowbar, color=color.lime, size=size.small)
+limitLocLong = entrySignalLong ? high + ((high - low) * .01) : na
+holdLimitLocLong = valuewhen(entrySignalLong, limitLocLong, 0)
+cancelSignalLong = close < ma1
+
+//Added v1.2
+//Short Signal
+entrySignalShort = strategy.position_size == 0 and close[1] < ma1 and close < ma1 and close > open
+secondSignalShort = strategy.position_size < 0 and close[1] < ma1 and close < ma1 and close > open
+plotshape(entrySignalShort, style=shape.triangledown, location=location.abovebar, color=color.red, size=size.small)
+plotshape(secondSignalShort, style=shape.triangledown, location=location.abovebar, color=color.orange, size=size.small)
+limitLocShort = entrySignalShort ? low - ((high - low) * .01) : na
+holdLimitLocShort = valuewhen(entrySignalShort, limitLocShort, 0)
+cancelSignalShort = close > ma1
+//Hold Entry Signal
+//Code no longer needed but saved just in case:
+//holdEntrySignalLong = valuewhen((entrySignalLong or entrySignalLong[1] or entrySignalLong[2]) and close > ma1 and close[1] > ma1 and close[2] > ma1, 1, 0)
+//entryTrigger = holdEntrySignalLong and close >= holdLimitLocLong
+
+
+//Normal Conditional Trailing Stops "Lookback Length" 
+lookbackLength = input(4, minval=1, title="Conditional Trailing Stops Lookback Length")
+normalOffset = input(0, minval=0, title="Conditional Trailing Stops Offset (Move on Close or Open)")
+pastHigh = highest(high, lookbackLength)
+pastLow = lowest(low, lookbackLength)
+//Aggressive Conditional Trailing Stops "Lookback Length"
+aggLookbackLength = input(2, minval=1, title="Aggressive Trailing Stops Lookback Length")
+aggOffset = input(0, minval=0, title="Aggressive Trailing Stops Offset (Move on Close or Open)")
+aggPastHigh = highest(high, aggLookbackLength)
+aggPastLow = lowest(low, aggLookbackLength)
+//Next 2 lines for testing
+//plot(pastHigh, "Past High", color=#0094FF, offset=1)
+//plot(pastLow, "Past Low", color=#0094FF, offset=1)
+//Bollinger Bands
+basisBB = sma(close, 20)
+dev = 2 * stdev(close, 20)
+upperBB = basisBB + dev
+lowerBB = basisBB - dev
+//Next 5 lines for testing
+//offset = input(0, "Bollinger Offset", type = input.integer, minval = -500, maxval = 500)
+//plot(basisBB, "Basis", color=color.navy, offset = offset)
+//p1 = plot(upperBB, "Upper BB", color=color.navy, offset = offset)
+//p2 = plot(lowerBB, "Lower BB", color=color.navy, offset = offset)
+//fill(p1, p2, title = "Background", color=#198787, transp=98)
+//ATR Multiple for Initial Stop Location
+atrValue = (rma(tr(true), length=14))
+atrMult = input(2.0, minval=1.0, title="Stop ATR Multiple", step=.25)
+//Highwave Warning
+highWave = ((high - low) > atrValue and close > open and (high - low) > 5*(close - open)) or (close < open and (high - low) > 5*(open - close)) or (close == open)
+
+//edited v1.2
+//Long Intitial ATR Multiple Stop Location
+atrStopLocLong = (high - (atrValue * atrMult))
+initialStopLong = entrySignalLong ? atrStopLocLong : na
+//Hold Initial Stop Value
+holdInitialStopLong = valuewhen(entrySignalLong, initialStopLong, 0)
+
+//edited v1.2
+//Short Intitial ATR Multiple Stop Location
+atrStopLocShort = (low + (atrValue * atrMult))
+initialStopShort = entrySignalShort ? atrStopLocShort : na
+//Hold Initial Stop Value
+holdInitialStopShort = valuewhen(entrySignalShort, initialStopShort, 0)
+
+//Long - Normal Conditional Trailing Stops
+tightStop = (low > upperBB and low > pastHigh[1] and highWave)
+condition1Stop = (close > upperBB)
+condition2Stop = (close > pastHigh[1])
+//atrStop = close[1] < pastLow[2] and close > pastLow[1]
+tightStopLoc = low
+condition1StopLoc = pastLow
+condition2StopLoc = pastLow[1]
+trailStop = tightStop and longStopsYes and normalStopsYes ? tightStopLoc : condition1Stop and longStopsYes and normalStopsYes ? condition1StopLoc : condition2Stop and longStopsYes and normalStopsYes ? condition2StopLoc : entrySignalLong ? initialStopLong : na
+plot(trailStop, "Conditional Trailing Stop", linewidth=4, color=color.red, style=plot.style_circles, offset=normalOffset)
+//Holds value of trailStop
+holdTrailingStop = valuewhen(trailStop and longStopsYes and normalStopsYes, trailStop, 0)
+plot(holdTrailingStop, title="Conditional Trailing Stop", linewidth=2, color=color.red, offset=normalOffset)
+
+
+
+//edited v1.2
+//Short - Normal Conditional Trailing Stops
+shortTightStop = (high < lowerBB and high < pastLow[1] and highWave)
+shortCondition1Stop = (close < lowerBB)
+shortCondition2Stop = (close < pastLow[1])
+//shortAtrStop = close[1] > pastHigh[2] and close < pastHigh[1]
+shortTightStopLoc = high
+shortCondition1StopLoc = pastHigh
+shortCondition2StopLoc = pastHigh[1]
+shortAtrStopLoc = (low + (atrValue * atrMult))
+shortTrailStop = shortTightStop and shortStopsYes and normalStopsYes ? shortTightStopLoc : shortCondition1Stop and shortStopsYes and normalStopsYes ? shortCondition1StopLoc : shortCondition2Stop and shortStopsYes and normalStopsYes ? shortCondition2StopLoc : entrySignalShort ? initialStopShort : na
+plot(shortTrailStop, "Short Conditional Trailing Stop", linewidth=4, color=color.maroon, style=plot.style_circles, offset=normalOffset)
+//Holds value of trailStop
+holdShortTS = valuewhen(shortTrailStop and shortStopsYes and normalStopsYes, shortTrailStop, 0)
+plot(holdShortTS, title="Conditional Trailing Stop", linewidth=2, color=color.maroon, offset=normalOffset)
+//Long - Aggressive Trailing Stops (Good for Intraday)
+aggStop = low[1] > low[2]
+aggStopLoc = aggPastLow[1] - ((aggPastHigh[1] - aggPastLow[1])*.05)
+aggTrailStop = aggStop and longStopsYes and aggStopsYes ? aggStopLoc : na
+plot(aggTrailStop, "Aggressive Trailing Stop", linewidth=4, color=color.orange, style=plot.style_circles, offset=aggOffset)
+//Holds value of trailStop
+holdAggTS = valuewhen(aggTrailStop and longStopsYes and aggStopsYes, aggTrailStop, 0)
+plot(holdAggTS, title="Aggressive Trailing Stop", linewidth=2, color=color.orange, offset=aggOffset)
+//Short - Aggressive Trailing Stops (Good for Intraday)
+shortAggStop = high[1] < high[2]
+shortAggStopLoc = aggPastHigh[1] + ((aggPastHigh[1] - aggPastLow[1])*.05)
+shortAggTrailStop = shortAggStop and shortStopsYes and aggStopsYes ? shortAggStopLoc : na
+plot(shortAggTrailStop, "Short Aggressive Trailing Stop", linewidth=4, color=color.purple, style=plot.style_circles, offset=aggOffset)
+//Holds value of trailStop
+holdShortAggTS = valuewhen(shortAggTrailStop and shortStopsYes and aggStopsYes, shortAggTrailStop, 0)
+plot(holdShortAggTS, title="Short Aggressive Trailing Stop", linewidth=2, color=color.purple, offset=aggOffset)
+//Target to Switch stops
+
+//edited v1.2
+//Make input eventualy 
+switchStopsTargetLong = 2 * (strategy.position_avg_price - holdInitialStopLong)
+switchStopsLong = close > strategy.position_avg_price + switchStopsTargetLong and holdAggTS > holdTrailingStop
+stoplossLong = entrySignalLong ? initialStopLong : switchStopsLong ? holdAggTS : holdTrailingStop
+
+//added v1.2
+//Make input eventualy 
+switchStopsTargetShort = 2 * (strategy.position_avg_price - holdInitialStopLong)
+switchStopsShort = close < strategy.position_avg_price + switchStopsTargetShort and holdShortAggTS < holdShortTS
+stoplossShort = entrySignalShort ? initialStopShort : switchStopsShort ? holdShortAggTS : holdShortTS
+
+
+
+//added v1.1
+//edited v1.2
+//Long Position Size
+positionSizeMax = (strategy.equity * marginSize)/close
+rPositionSizeLong = (rSize/(limitLocLong - initialStopLong)) > 1 ? (rSize/(limitLocLong - initialStopLong)) : 1
+//rPositionSizeLong = (rSize/(close - initialStopLong)) > 1 ? (rSize/(close - initialStopLong)) : 1
+positionSizeLong = rPositionSizeLong > positionSizeMax ? positionSizeMax : rPositionSizeLong
+
+//added v1.2
+//Short Position Size
+rPositionSizeShort = (rSize/(initialStopShort - limitLocShort)) > 1 ? (rSize/(initialStopShort - limitLocShort)) : 1
+positionSizeShort = rPositionSizeShort < positionSizeMax and rPositionSizeShort > 1 ? rPositionSizeShort : positionSizeMax
+positionSizeShort1 = positionSizeShort > 1 ? positionSizeShort : 1
+
+//added v1.1
+//Time Filter (not entrys within 15 minutes of open and last 30 minutes of day)
+noEntryTimeFilter = time(timeframe.period, "0945-1530")
+//To Test noEntryTimeFilter: plot(noEntryTimeFilter)
+
+//Time Filter (close open trades last 5 miunutes of day)
+//old v1.1 code only worked on less thaqn 5 minute chart
+//closeTradesEOD5min = time(timeframe.period, "1555-1600")
+//To Test closeTradesEOD: plot(closeTradesEODTime)
+
+//New EOD close code  v1.2
+//check timeframe (do we need more?)
+timeframe1 = timeframe.period == "1" ? 1 : 0
+timeframe2 = timeframe.period == "2" ? 1 : 0
+timeframe3 = timeframe.period == "3" ? 1 : 0
+timeframe5 = timeframe.period == "5" ? 1 : 0
+timeframe10 = timeframe.period == "10" ? 1 : 0
+timeframe15 = timeframe.period == "15" ? 1 : 0
+timeframe30 = timeframe.period == "30" ? 1 : 0
+timeframe60 = timeframe.period == "60" ? 1 : 0
+timeframe65 = timeframe.period == "65" ? 1 : 0
+timeframe78 = timeframe.period == "78" ? 1 : 0
+//Set close time
+closeEOD1min = timeframe1 ? time(timeframe.period, "1559-1600") : na
+closeEOD2min = timeframe2 ? time(timeframe.period, "1558-1600") : na
+closeEOD3min = timeframe3 ? time(timeframe.period, "1557-1600") : na
+closeEOD5min = timeframe5 ? time(timeframe.period, "1555-1600") : na
+closeEOD10min = timeframe10 ? time(timeframe.period, "1550-1600") : na
+closeEOD15min = timeframe15 ? time(timeframe.period, "1545-1600") : na
+//Below are aditional intraday timeframes that should probably not close at EOD
+//closeEOD30min = timeframe30 ? time(timeframe.period, "1530-1600") : na
+//closeEOD60min = timeframe60 ? time(timeframe.period, "1530-1600") : na
+//closeEOD65min = timeframe65 ? time(timeframe.period, "1455-1600") : na
+//closeEOD78min = timeframe78 ? time(timeframe.period, "1442-1600") : na
+//Check if Daily Weekly or Monthly
+//Might be needed but for now is not
+//timeframeDorW = timeframe.isdaily or timeframe.isweekly or timeframe.ismonthly ? 1 : na
+//plot(timeframeDorW)
+
+//edited v1.2
+//Close trades at EOD
+closeTradesEOD = closeEOD1min or closeEOD2min or closeEOD3min or closeEOD5min or closeEOD10min or closeEOD15min ? 1 : na
+entryTime = noEntryTimeFilter ? 1 : na
+ 
+//edited v1.1
+//edited v1.2
+//Long Entry Order 
+strategy.order("Long Entry", long = true, qty = positionSizeLong, stop = holdLimitLocLong, when = (strategy.position_size <= 0 and entrySignalLong and timeFilter and entryTime))
+strategy.cancel("Long Entry", when = cancelSignalLong)
+
+//Added v1.2
+//Short Entry Order 
+//strategy.order("Short Entry", long = false, qty = positionSizeShort, stop = holdLimitLocShort, when = (strategy.position_size == 0 and entrySignalShort and timeFilter and entryTime))
+//strategy.cancel("Short Entry", when = cancelSignalShort)
+
+//edited v1.2
+//Long Stop and Target Orders
+strategy.order("Long Stop Loss", long = false, qty = strategy.position_size, stop=stoplossLong, oca_name="Long Exit", oca_type=strategy.oca.cancel, when = timeFilter and strategy.position_size > 0, comment = "Stop")
+
+//added v1.2
+//Short Stop and Target Orders
+
+//***** v1.2 error is in this code line string most likely: ******
+
+//strategy.order("Short Stop Loss", long = true, qty = strategy.position_size, stop=stoplossShort, oca_name="Short Exit", oca_type=strategy.oca.cancel, when = timeFilter and strategy.position_size < 0, comment = "Stop")
+
+//edited v1.2
+//added v1.1
+strategy.close_all(when = closeTradesEOD, comment = "EOD Close", alert_message = "EOD Close")
+//strategy.cancel orders are needed to prevent bug with EOD Exit Order
+//Long Cancel Orders
+strategy.cancel("Long Stop Loss", when = closeTradesEOD)
+
+//added v1.2
+//Short Cancel Orders
+//strategy.cancel("Short Stop Loss", when = closeTradesEOD)
+
+
+
+//New Strat- second strat
+//Conditional Trailing Stops
+strategy(title="10 EMA with Sorcery Stops", shorttitle = "10 EMA with SS", overlay = true, calc_on_every_tick=true, default_qty_value = 100, initial_capital = 100000, default_qty_type = strategy.fixed, pyramiding = 0, process_orders_on_close=true)
+//creates a time filter to prevent "too many orders error" and allows user to see Strategy results per year by changing input in settings in Stratey Tester
+
+startDay = input(1, title="Start Day", minval=1, maxval=31, step=1)
+startMonth = input(1, title="Start Month", minval=1, maxval=12, step=1)
+startYear = input(2009, title="Start Year", minval=1980, step=1)
+endDay = input(31, title="End Day", minval=1, maxval=31, step=1)
+endMonth = input(12, title="End Month", minval=1, maxval=12, step=1)
+endYear = input(2050, title="End Year", minval=1980, step=1)
+timeFilter = (year >= startYear) and (month >= startMonth) and (dayofmonth >= startDay) and (year <= endYear) and (month <= endMonth) and (dayofmonth <= endDay)
+
+//added v1.1
+//Margin Size Input
+marginSize = input(title="Margin Size", defval=4, minval=1, step=1)
+
+//R Size (Risk Amount)
+rStaticOrPercent = input(title="R Static or Percent", defval="Static", options=["Static", "Percent"])
+rSizeStatic = input(1000, title="R Size Static", minval=1, step=100)
+rSizePercent = input(2, title="R Size Percent", minval=.01, step=.01)
+rSize = rStaticOrPercent == "Static" ? rSizeStatic : rStaticOrPercent == "Percent" ? (rSizePercent * .01 * strategy.equity) : 1
+//Turn On / Off different stops
+enableLongStops = input(title="Enable Long Stops", defval="Yes", options=["Yes", "No"])
+longStopsYes = enableLongStops == "Yes"
+
+//*** Change defval to "Yes" to test shorts ***
+enableShortStops = input(title="Enable Short Stops", defval="No", options=["Yes", "No"])
+shortStopsYes = enableShortStops == "Yes"
+enableNormalStops = input(title="Enable Normal Stops", defval="Yes", options=["Yes", "No"])
+normalStopsYes = enableNormalStops == "Yes"
+enableAggStops = input(title="Enable Aggressive Stops", defval="Yes", options=["Yes", "No"])
+aggStopsYes = enableAggStops == "Yes"
+//MAs Inputs Defalt is 10 EMA, 20 EMA, 50 EMA, 100 SMA and 200 SMA
+ma1Length = input(10, title="MA1 Period", minval=1, step=1)
+ma1Type = input(title="MA1 Type", defval="EMA", options=["SMA", "EMA", "WMA"])
+//ma2Length = input(20, title="MA2 Period", minval=1, step=1)
+//ma2Type = input(title="MA2 Type", defval="EMA", options=["SMA", "EMA", "WMA"])
+//ma3Length = input(34, title="MA3 Period", minval=1, step=1)
+//ma3Type = input(title="MA3 Type", defval="EMA", options=["SMA", "EMA", "WMA"])
+//ma4Length = input(100, title="MA4 Period", minval=1, step=1)
+//ma4Type = input(title="MA4 Type", defval="SMA", options=["SMA", "EMA", "WMA"])
+//ma5Length = input(200, title="MA5 Period", minval=1, step=1)
+//ma5Type = input(title="MA5 Type", defval="SMA", options=["SMA", "EMA", "WMA"])
+//MAs defined
+ma1 = ma1Type == "EMA" ? ema(close, ma1Length) : ma1Type == "SMA" ? sma(close, ma1Length) : wma(close, ma1Length)
+//ma2 = ma2Type == "EMA" ? ema(close, ma2Length) : ma2Type == "SMA" ? sma(close, ma2Length) : wma(close, ma2Length)
+//ma3 = ma3Type == "EMA" ? ema(close, ma3Length) : ma3Type == "SMA" ? sma(close, ma3Length) : wma(close, ma3Length)
+//ma4 = ma4Type == "SMA" ? sma(close, ma4Length) : ma4Type == "EMA" ? ema(close, ma4Length) : wma(close, ma4Length)
+//ma5 = ma5Type == "SMA" ? sma(close, ma5Length) : ma5Type == "EMA" ? ema(close, ma5Length) : wma(close, ma5Length)
+//Plot MAs
+plot(ma1, title="MA1", color=color.blue, linewidth=1, style=plot.style_line)
+//plot(ma2, title="MA2", color=color.purple, linewidth=1, style=plot.style_line)
+//plot(ma3, title="MA3", color=#00FFFF, linewidth=1, style=plot.style_line)
+//plot(ma4, title="MA4", color=color.blue, linewidth=2, style=plot.style_line)
+//plot(ma5, title="MA5", color=color.orange, linewidth=2, style=plot.style_line)
+
+//Edited v1.2
+//Entry Signals
+//Long Signal
+entrySignalLong = strategy.position_size == 0 and close[1] > ma1 and close > ma1 and close < open
+secondSignalLong = strategy.position_size > 0 and close[1] > ma1 and close > ma1 and close < open
+plotshape(entrySignalLong, style=shape.triangleup, location=location.belowbar, color=color.green, size=size.small)
+plotshape(secondSignalLong, style=shape.triangleup, location=location.belowbar, color=color.lime, size=size.small)
+limitLocLong = entrySignalLong ? high + ((high - low) * .01) : na
+holdLimitLocLong = valuewhen(entrySignalLong, limitLocLong, 0)
+cancelSignalLong = close < ma1
+
+//Added v1.2
+//Short Signal
+entrySignalShort = strategy.position_size == 0 and close[1] < ma1 and close < ma1 and close > open
+secondSignalShort = strategy.position_size < 0 and close[1] < ma1 and close < ma1 and close > open
+plotshape(entrySignalShort, style=shape.triangledown, location=location.abovebar, color=color.red, size=size.small)
+plotshape(secondSignalShort, style=shape.triangledown, location=location.abovebar, color=color.orange, size=size.small)
+limitLocShort = entrySignalShort ? low - ((high - low) * .01) : na
+holdLimitLocShort = valuewhen(entrySignalShort, limitLocShort, 0)
+cancelSignalShort = close > ma1
+//Hold Entry Signal
+//Code no longer needed but saved just in case:
+//holdEntrySignalLong = valuewhen((entrySignalLong or entrySignalLong[1] or entrySignalLong[2]) and close > ma1 and close[1] > ma1 and close[2] > ma1, 1, 0)
+//entryTrigger = holdEntrySignalLong and close >= holdLimitLocLong
+
+
+//Normal Conditional Trailing Stops "Lookback Length" 
+lookbackLength = input(4, minval=1, title="Conditional Trailing Stops Lookback Length")
+normalOffset = input(0, minval=0, title="Conditional Trailing Stops Offset (Move on Close or Open)")
+pastHigh = highest(high, lookbackLength)
+pastLow = lowest(low, lookbackLength)
+//Aggressive Conditional Trailing Stops "Lookback Length"
+aggLookbackLength = input(2, minval=1, title="Aggressive Trailing Stops Lookback Length")
+aggOffset = input(0, minval=0, title="Aggressive Trailing Stops Offset (Move on Close or Open)")
+aggPastHigh = highest(high, aggLookbackLength)
+aggPastLow = lowest(low, aggLookbackLength)
+//Next 2 lines for testing
+//plot(pastHigh, "Past High", color=#0094FF, offset=1)
+//plot(pastLow, "Past Low", color=#0094FF, offset=1)
+//Bollinger Bands
+basisBB = sma(close, 20)
+dev = 2 * stdev(close, 20)
+upperBB = basisBB + dev
+lowerBB = basisBB - dev
+//Next 5 lines for testing
+//offset = input(0, "Bollinger Offset", type = input.integer, minval = -500, maxval = 500)
+//plot(basisBB, "Basis", color=color.navy, offset = offset)
+//p1 = plot(upperBB, "Upper BB", color=color.navy, offset = offset)
+//p2 = plot(lowerBB, "Lower BB", color=color.navy, offset = offset)
+//fill(p1, p2, title = "Background", color=#198787, transp=98)
+//ATR Multiple for Initial Stop Location
+atrValue = (rma(tr(true), length=14))
+atrMult = input(2.0, minval=1.0, title="Stop ATR Multiple", step=.25)
+//Highwave Warning
+highWave = ((high - low) > atrValue and close > open and (high - low) > 5*(close - open)) or (close < open and (high - low) > 5*(open - close)) or (close == open)
+
+//edited v1.2
+//Long Intitial ATR Multiple Stop Location
+atrStopLocLong = (high - (atrValue * atrMult))
+initialStopLong = entrySignalLong ? atrStopLocLong : na
+//Hold Initial Stop Value
+holdInitialStopLong = valuewhen(entrySignalLong, initialStopLong, 0)
+
+//edited v1.2
+//Short Intitial ATR Multiple Stop Location
+atrStopLocShort = (low + (atrValue * atrMult))
+initialStopShort = entrySignalShort ? atrStopLocShort : na
+//Hold Initial Stop Value
+holdInitialStopShort = valuewhen(entrySignalShort, initialStopShort, 0)
+
+//Long - Normal Conditional Trailing Stops
+tightStop = (low > upperBB and low > pastHigh[1] and highWave)
+condition1Stop = (close > upperBB)
+condition2Stop = (close > pastHigh[1])
+//atrStop = close[1] < pastLow[2] and close > pastLow[1]
+tightStopLoc = low
+condition1StopLoc = pastLow
+condition2StopLoc = pastLow[1]
+trailStop = tightStop and longStopsYes and normalStopsYes ? tightStopLoc : condition1Stop and longStopsYes and normalStopsYes ? condition1StopLoc : condition2Stop and longStopsYes and normalStopsYes ? condition2StopLoc : entrySignalLong ? initialStopLong : na
+plot(trailStop, "Conditional Trailing Stop", linewidth=4, color=color.red, style=plot.style_circles, offset=normalOffset)
+//Holds value of trailStop
+holdTrailingStop = valuewhen(trailStop and longStopsYes and normalStopsYes, trailStop, 0)
+plot(holdTrailingStop, title="Conditional Trailing Stop", linewidth=2, color=color.red, offset=normalOffset)
+
+
+
+//edited v1.2
+//Short - Normal Conditional Trailing Stops
+shortTightStop = (high < lowerBB and high < pastLow[1] and highWave)
+shortCondition1Stop = (close < lowerBB)
+shortCondition2Stop = (close < pastLow[1])
+//shortAtrStop = close[1] > pastHigh[2] and close < pastHigh[1]
+shortTightStopLoc = high
+shortCondition1StopLoc = pastHigh
+shortCondition2StopLoc = pastHigh[1]
+shortAtrStopLoc = (low + (atrValue * atrMult))
+shortTrailStop = shortTightStop and shortStopsYes and normalStopsYes ? shortTightStopLoc : shortCondition1Stop and shortStopsYes and normalStopsYes ? shortCondition1StopLoc : shortCondition2Stop and shortStopsYes and normalStopsYes ? shortCondition2StopLoc : entrySignalShort ? initialStopShort : na
+plot(shortTrailStop, "Short Conditional Trailing Stop", linewidth=4, color=color.maroon, style=plot.style_circles, offset=normalOffset)
+//Holds value of trailStop
+holdShortTS = valuewhen(shortTrailStop and shortStopsYes and normalStopsYes, shortTrailStop, 0)
+plot(holdShortTS, title="Conditional Trailing Stop", linewidth=2, color=color.maroon, offset=normalOffset)
+//Long - Aggressive Trailing Stops (Good for Intraday)
+aggStop = low[1] > low[2]
+aggStopLoc = aggPastLow[1] - ((aggPastHigh[1] - aggPastLow[1])*.05)
+aggTrailStop = aggStop and longStopsYes and aggStopsYes ? aggStopLoc : na
+plot(aggTrailStop, "Aggressive Trailing Stop", linewidth=4, color=color.orange, style=plot.style_circles, offset=aggOffset)
+//Holds value of trailStop
+holdAggTS = valuewhen(aggTrailStop and longStopsYes and aggStopsYes, aggTrailStop, 0)
+plot(holdAggTS, title="Aggressive Trailing Stop", linewidth=2, color=color.orange, offset=aggOffset)
+//Short - Aggressive Trailing Stops (Good for Intraday)
+shortAggStop = high[1] < high[2]
+shortAggStopLoc = aggPastHigh[1] + ((aggPastHigh[1] - aggPastLow[1])*.05)
+shortAggTrailStop = shortAggStop and shortStopsYes and aggStopsYes ? shortAggStopLoc : na
+plot(shortAggTrailStop, "Short Aggressive Trailing Stop", linewidth=4, color=color.purple, style=plot.style_circles, offset=aggOffset)
+//Holds value of trailStop
+holdShortAggTS = valuewhen(shortAggTrailStop and shortStopsYes and aggStopsYes, shortAggTrailStop, 0)
+plot(holdShortAggTS, title="Short Aggressive Trailing Stop", linewidth=2, color=color.purple, offset=aggOffset)
+//Target to Switch stops
+
+//edited v1.2
+//Make input eventualy 
+switchStopsTargetLong = 2 * (strategy.position_avg_price - holdInitialStopLong)
+switchStopsLong = close > strategy.position_avg_price + switchStopsTargetLong and holdAggTS > holdTrailingStop
+stoplossLong = entrySignalLong ? initialStopLong : switchStopsLong ? holdAggTS : holdTrailingStop
+
+//added v1.2
+//Make input eventualy 
+switchStopsTargetShort = 2 * (strategy.position_avg_price - holdInitialStopLong)
+switchStopsShort = close < strategy.position_avg_price + switchStopsTargetShort and holdShortAggTS < holdShortTS
+stoplossShort = entrySignalShort ? initialStopShort : switchStopsShort ? holdShortAggTS : holdShortTS
+
+
+
+//added v1.1
+//edited v1.2
+//Long Position Size
+positionSizeMax = (strategy.equity * marginSize)/close
+rPositionSizeLong = (rSize/(limitLocLong - initialStopLong)) > 1 ? (rSize/(limitLocLong - initialStopLong)) : 1
+//rPositionSizeLong = (rSize/(close - initialStopLong)) > 1 ? (rSize/(close - initialStopLong)) : 1
+positionSizeLong = rPositionSizeLong > positionSizeMax ? positionSizeMax : rPositionSizeLong
+
+//added v1.2
+//Short Position Size
+rPositionSizeShort = (rSize/(initialStopShort - limitLocShort)) > 1 ? (rSize/(initialStopShort - limitLocShort)) : 1
+positionSizeShort = rPositionSizeShort < positionSizeMax and rPositionSizeShort > 1 ? rPositionSizeShort : positionSizeMax
+positionSizeShort1 = positionSizeShort > 1 ? positionSizeShort : 1
+
+//added v1.1
+//Time Filter (not entrys within 15 minutes of open and last 30 minutes of day)
+noEntryTimeFilter = time(timeframe.period, "0945-1530")
+//To Test noEntryTimeFilter: plot(noEntryTimeFilter)
+
+//Time Filter (close open trades last 5 miunutes of day)
+//old v1.1 code only worked on less thaqn 5 minute chart
+//closeTradesEOD5min = time(timeframe.period, "1555-1600")
+//To Test closeTradesEOD: plot(closeTradesEODTime)
+
+//New EOD close code  v1.2
+//check timeframe (do we need more?)
+timeframe1 = timeframe.period == "1" ? 1 : 0
+timeframe2 = timeframe.period == "2" ? 1 : 0
+timeframe3 = timeframe.period == "3" ? 1 : 0
+timeframe5 = timeframe.period == "5" ? 1 : 0
+timeframe10 = timeframe.period == "10" ? 1 : 0
+timeframe15 = timeframe.period == "15" ? 1 : 0
+timeframe30 = timeframe.period == "30" ? 1 : 0
+timeframe60 = timeframe.period == "60" ? 1 : 0
+timeframe65 = timeframe.period == "65" ? 1 : 0
+timeframe78 = timeframe.period == "78" ? 1 : 0
+//Set close time
+closeEOD1min = timeframe1 ? time(timeframe.period, "1559-1600") : na
+closeEOD2min = timeframe2 ? time(timeframe.period, "1558-1600") : na
+closeEOD3min = timeframe3 ? time(timeframe.period, "1557-1600") : na
+closeEOD5min = timeframe5 ? time(timeframe.period, "1555-1600") : na
+closeEOD10min = timeframe10 ? time(timeframe.period, "1550-1600") : na
+closeEOD15min = timeframe15 ? time(timeframe.period, "1545-1600") : na
+//Below are aditional intraday timeframes that should probably not close at EOD
+//closeEOD30min = timeframe30 ? time(timeframe.period, "1530-1600") : na
+//closeEOD60min = timeframe60 ? time(timeframe.period, "1530-1600") : na
+//closeEOD65min = timeframe65 ? time(timeframe.period, "1455-1600") : na
+//closeEOD78min = timeframe78 ? time(timeframe.period, "1442-1600") : na
+//Check if Daily Weekly or Monthly
+//Might be needed but for now is not
+//timeframeDorW = timeframe.isdaily or timeframe.isweekly or timeframe.ismonthly ? 1 : na
+//plot(timeframeDorW)
+
+//edited v1.2
+//Close trades at EOD
+closeTradesEOD = closeEOD1min or closeEOD2min or closeEOD3min or closeEOD5min or closeEOD10min or closeEOD15min ? 1 : na
+entryTime = noEntryTimeFilter ? 1 : na
+ 
+//edited v1.1
+//edited v1.2
+//Long Entry Order 
+strategy.order("Long Entry", long = true, qty = positionSizeLong, stop = holdLimitLocLong, when = (strategy.position_size <= 0 and entrySignalLong and timeFilter and entryTime))
+strategy.cancel("Long Entry", when = cancelSignalLong)
+
+//Added v1.2
+//Short Entry Order 
+//strategy.order("Short Entry", long = false, qty = positionSizeShort, stop = holdLimitLocShort, when = (strategy.position_size == 0 and entrySignalShort and timeFilter and entryTime))
+//strategy.cancel("Short Entry", when = cancelSignalShort)
+
+//edited v1.2
+//Long Stop and Target Orders
+strategy.order("Long Stop Loss", long = false, qty = strategy.position_size, stop=stoplossLong, oca_name="Long Exit", oca_type=strategy.oca.cancel, when = timeFilter and strategy.position_size > 0, comment = "Stop")
+
+//added v1.2
+//Short Stop and Target Orders
+
+//***** v1.2 error is in this code line string most likely: ******
+
+//strategy.order("Short Stop Loss", long = true, qty = strategy.position_size, stop=stoplossShort, oca_name="Short Exit", oca_type=strategy.oca.cancel, when = timeFilter and strategy.position_size < 0, comment = "Stop")
+
+//edited v1.2
+//added v1.1
+strategy.close_all(when = closeTradesEOD, comment = "EOD Close", alert_message = "EOD Close")
+//strategy.cancel orders are needed to prevent bug with EOD Exit Order
+//Long Cancel Orders
+strategy.cancel("Long Stop Loss", when = closeTradesEOD)
+
+//added v1.2
+//Short Cancel Orders
+//strategy.cancel("Short Stop Loss", when = closeTradesEOD)
+
+
+Week 5 Mentorship with Dustin Drummond
+10/20 EMA Bounce Strategy (Day Trading)
+Pre-trading prep:
+1.	Confirm long-term daily/weekly trend and record in log
+2.	Confirm the short-term trend on the 30m, 1 hr, 65m or 78m chart and record in log
+3.	Draw at least 3 support/resistance lines on chart
+4.	No trades for first 15 minutes
+Long Setup and Entry:
+1.	10 EMA > 20 EMA and 10 EMA > 50 EMA and 20 EMA > 50 EMA (rainbow)
+2.	Low < 10 EMA and Close > 10 EMA
+3.	Close > VWAP
+4.	“Big Wick Candle” wicks are larger than body or hammer candle
+5.	Bonus if the low also breaks, touches or comes close to the 20 EMA
+6.	Only take the first bounce in a series (if any EMAs cross the series resets)
+7.	Stop Limit Entry above high (with buffer)
+Long Stops, Targets and Trailing Stops:
+1.	Initial Stop should be below the low with a “buffer” and preferably below the 20 EMA or at least halfway between 10 EMA and 20 EMA
+2.	Trail Stops after first pivot and trade is “Green” with Normal Conditional Stops
+3.	After trade hits 2R profit Trail Stops with Aggressive Conditional Stops
+4.	If trade goes “Green” to “Red” to “Green” then trail stop up as high as possible preferably above entry (support/resistance, Normal Conditional Stop or Aggressive Conditional Stop)
+5.	If counter trend set a 2R target max (Pre-trading Prep)
+6.	If a reversal candle (highwave, doji, hammer…) shows up and RSI > 68 (RSI < 32 for short) tighten stop under low candle with a little buffer (half the previous candle for example) and set target at High + (High - Low)
+
+*** For Short trades just reverse the process but if it is counter trend, the trade should work quickly and if it does not, consider tightening stops and targets or exiting if the trade stalls.
+
+
+
+
+
+
+Counter Trend Extend Strategy (Day Trading)
+*** Black Diamond - Advanced Strategy ***
+Pre-trading prep:
+1.	Confirm long-term daily/weekly trend and record in log
+2.	Confirm the short-term trend on the 30m, 1 hr, 65m or 78m chart and record in log
+3.	Draw at least 3 support/resistance lines on chart
+4.	No trades for first 15 minutes
+Long Setup and Entry:
+1.	10 EMA < 20 EMA and 50 EMA and 20 EMA < 50 EMA (rainbow)
+2.	Open and Close < 10 EMA
+3.	“Big Wick Candle” wicks are larger than body or hammer candle
+4.	RSI < 32 (RSI > 68 for short)
+5.	EMAs spread out
+6.	Price “far” from EMAs
+7.	Stop Limit Entry above high (with buffer)
+Long Stops, Targets and Trailing Stops:
+1.	Initial Stop should be below the low with a “buffer” and preferably below some support/resistance
+2.	Trail Stops after first pivot and trade is “Green” with Normal Conditional Stops
+3.	After trade hits 2R profit Trail Stops with Aggressive Conditional Stops
+4.	If trade goes “Green” to “Red” to “Green” then trail stop up as high as possible preferably above entry (support/resistance, Normal Conditional Stop or Aggressive Conditional Stop)
+5.	If counter trend set a 2R target max (Pre-trading Prep)
+6.	If a reversal candle (highwave, doji, hammer…) shows up and RSI > 68 (RSI < 32 for short) tighten stop under low candle with a little buffer (half the previous candle for example) and set target at High + (High - Low)
+
+*** For Short trades just reverse the process but if it is counter trend, the trade should work quickly and if it does not, consider tightening stops and targets or exiting if the trade stalls.
+
